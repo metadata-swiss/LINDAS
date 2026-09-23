@@ -18,7 +18,11 @@ class DatasetSourceManifest:
     """Frozen i14y dataset inventory shared by every job of one workflow run."""
 
     datasets: list[dict[str, Any]]
-    structured_dataset_count: int
+    structured_dataset_identifiers: list[str]
+
+    @property
+    def structured_dataset_count(self) -> int:
+        return len(self.structured_dataset_identifiers)
 
     @property
     def source_identifiers(self) -> list[str]:
@@ -41,22 +45,37 @@ class DatasetSourceManifest:
             )
 
     def write(self, path: str | Path) -> None:
-        payload = {"schemaVersion": 1, **asdict(self)}
+        payload = {"schemaVersion": 2, **asdict(self)}
         Path(path).write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
     @classmethod
     def read(cls, path: str | Path) -> "DatasetSourceManifest":
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
-        if payload.get("schemaVersion") != 1:
+        if payload.get("schemaVersion") != 2:
             raise RuntimeError(f"Unsupported dataset source manifest schema in {path}")
         datasets = payload.get("datasets")
-        structured_dataset_count = payload.get("structured_dataset_count")
-        if not isinstance(datasets, list) or not isinstance(structured_dataset_count, int):
+        structured_dataset_identifiers = payload.get("structured_dataset_identifiers")
+        if (
+            not isinstance(datasets, list)
+            or not isinstance(structured_dataset_identifiers, list)
+            or not all(isinstance(identifier, str) and identifier for identifier in structured_dataset_identifiers)
+        ):
             raise RuntimeError(f"Invalid dataset source manifest {path}")
-        manifest = cls(datasets=datasets, structured_dataset_count=structured_dataset_count)
+        manifest = cls(
+            datasets=datasets,
+            structured_dataset_identifiers=sorted(structured_dataset_identifiers),
+        )
         # Validate identifiers and duplicate primary identifiers before any
         # separate workflow job can use the artifact.
-        DatasetSynchronizer._source_by_identifier(manifest.datasets)
+        source_identifiers = set(DatasetSynchronizer._source_by_identifier(manifest.datasets))
+        unknown_structured_identifiers = set(manifest.structured_dataset_identifiers) - source_identifiers
+        if unknown_structured_identifiers:
+            raise RuntimeError(
+                "Structured dataset identifiers absent from the source manifest: "
+                + ", ".join(sorted(unknown_structured_identifiers))
+            )
+        if len(manifest.structured_dataset_identifiers) != len(set(manifest.structured_dataset_identifiers)):
+            raise RuntimeError("Duplicate structured dataset identifiers in the source manifest")
         return manifest
 
 
@@ -116,9 +135,26 @@ class DatasetSynchronizer:
             result[identifier] = dataset
         return result
 
-    def build_plan(self, datasets: list[dict[str, Any]] | None = None, now: datetime | None = None) -> SyncPlan:
+    def build_plan(
+        self,
+        datasets: list[dict[str, Any]] | None = None,
+        now: datetime | None = None,
+        structured_dataset_identifiers: set[str] | None = None,
+    ) -> SyncPlan:
         source_by_identifier = self._source_by_identifier(datasets or self.i14y.get_all_datasets())
         source_identifiers = sorted(source_by_identifier)
+        source_identifier_set = set(source_identifiers)
+        source_structured_identifiers = (
+            set(structured_dataset_identifiers)
+            if structured_dataset_identifiers is not None
+            else self.i14y.get_structured_dataset_identifiers()
+        )
+        unknown_structured_identifiers = source_structured_identifiers - source_identifier_set
+        if unknown_structured_identifiers:
+            raise ValueError(
+                "i14y reported structured dataset identifier(s) absent from /api/datasets: "
+                + ", ".join(sorted(unknown_structured_identifiers))
+            )
         if self.config.clear_graph:
             return SyncPlan(
                 process_ids=[str(source_by_identifier[identifier]["id"]) for identifier in source_identifiers],
@@ -127,6 +163,7 @@ class DatasetSynchronizer:
             )
 
         known_identifiers = self.lindas.get_existing_dataset_identifiers()
+        known_structured_identifiers = self.lindas.get_existing_structured_dataset_identifiers()
         cutoff = (now or datetime.now(timezone.utc)) - timedelta(hours=self.config.modified_lookback_hours)
         process_ids: list[str] = []
         deletes: set[str] = set(known_identifiers - set(source_identifiers))
@@ -135,11 +172,16 @@ class DatasetSynchronizer:
             if identifier not in known_identifiers:
                 process_ids.append(str(dataset["id"]))
                 continue
+            structure_differs = (
+                identifier in source_structured_identifiers
+            ) != (
+                identifier in known_structured_identifiers
+            )
             try:
                 modified_at = self.parse_modified_at(dataset)
             except ValueError:
                 modified_at = None
-            if modified_at is None or modified_at >= cutoff:
+            if structure_differs or modified_at is None or modified_at >= cutoff:
                 deletes.add(identifier)
                 process_ids.append(str(dataset["id"]))
         return SyncPlan(

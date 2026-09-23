@@ -109,6 +109,42 @@ class I14YDatasetsAPI:
             f"i14y structured-dataset count failed after {self.config.api_retries} attempts: {search_url}"
         ) from last_error
 
+    def get_structured_dataset_identifiers(self) -> set[str]:
+        """Return the complete, current i14y inventory of structured datasets.
+
+        The set is used both for the frozen workflow metric and to reconcile
+        structures that were added or removed without updating ``modifiedAt``.
+        """
+        search_url = f"{self.config.datasets_api_url.rsplit('/', 1)[0]}/search"
+        identifiers: list[str] = []
+        page = 1
+        while True:
+            payload = self._get_json(
+                search_url,
+                params={
+                    "structure": "WithStructure",
+                    "types": "Dataset",
+                    "page": page,
+                    "pageSize": self.config.page_size,
+                },
+            )
+            data = payload.get("data") or []
+            if not isinstance(data, list):
+                raise ValueError("GET /api/search returned a non-list data member")
+            for dataset in data:
+                if not isinstance(dataset, dict):
+                    raise ValueError("GET /api/search returned a non-object dataset")
+                identifier = dataset.get("identifier")
+                if not isinstance(identifier, str) or not identifier:
+                    raise ValueError("GET /api/search returned a structured dataset without an identifier")
+                identifiers.append(identifier)
+            if not data or len(data) < self.config.page_size:
+                break
+            page += 1
+
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError("GET /api/search returned duplicate structured dataset identifiers")
+        return set(identifiers)
     def get_dataset(self, dataset_id: str) -> dict[str, Any]:
         payload = self._get_json(f"{self.config.datasets_api_url}/{dataset_id}")
         data = payload.get("data")
@@ -198,6 +234,28 @@ WHERE {{
   GRAPH <{self.config.target_graph}> {{
     ?dataset a dcat:Dataset ; 
              dct:identifier ?identifier .
+  }}
+}}'''
+        return {
+            value
+            for row in self.query(query)
+            if (value := row.get("identifier", {}).get("value"))
+        }
+    def get_existing_structured_dataset_identifiers(self) -> set[str]:
+        """Return datasets that currently have the structure link emitted by this exporter."""
+        query = f'''\
+PREFIX dcat: <http://www.w3.org/ns/dcat#>
+PREFIX dct: <http://purl.org/dc/terms/>
+SELECT DISTINCT ?identifier
+WHERE {{
+  GRAPH <{self.config.target_graph}> {{
+    ?dataset a dcat:Dataset ;
+             dct:identifier ?identifier ;
+             dct:conformsTo ?structure .
+    FILTER(
+      isIRI(?structure) &&
+      STR(?structure) = CONCAT(STR(?dataset), "/structure")
+    )
   }}
 }}'''
         return {

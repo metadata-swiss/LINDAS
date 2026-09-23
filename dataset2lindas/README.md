@@ -31,9 +31,9 @@ For `CLEAR_GRAPH=false`, the plan compares this inventory with existing `dcat:Da
 Before the workflow creates batches, it writes two artifacts:
 
 - `dataset_sync_plan.json`: dataset ids to export and identifiers to delete;
-- `dataset_source_manifest.json`: the frozen source inventory and the source count of datasets with a structure.
+- `dataset_source_manifest.json`: the frozen source inventory and the identifiers of datasets with a structure.
 
-All batch jobs, optional catalogue generation and final metrics use the same manifest. A change in i14y during a workflow run cannot therefore change the source set halfway through publication.
+All batch jobs, optional catalogue generation and final metrics use the same manifest. A change in i14y during a workflow run cannot therefore change the source set halfway through publication. The incremental plan also reconciles the frozen structure identifiers against LINDAS, so it backfills a structure added without a corresponding dataset `modifiedAt` update and removes a structure that disappeared.
 
 ## RDF model
 

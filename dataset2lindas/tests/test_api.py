@@ -93,6 +93,28 @@ class ApiTests(unittest.TestCase):
             {"structure": "WithStructure", "types": "Dataset", "page": 1, "pageSize": 25},
             session.get_calls[0][1]["params"],
         )
+
+    def test_structured_dataset_identifiers_paginate_the_i14y_search_inventory(self):
+        class SearchSession(Session):
+            def get(self, url, **kwargs):
+                self.get_calls.append((url, kwargs))
+                page = kwargs["params"]["page"]
+                payloads = {
+                    1: {"data": [{"identifier": "FIRST"}, {"identifier": "SECOND"}]},
+                    2: {"data": [{"identifier": "THIRD"}]},
+                }
+                return Response(payloads[page])
+
+        session = SearchSession()
+        identifiers = I14YDatasetsAPI(make_config(), session).get_structured_dataset_identifiers()
+
+        self.assertEqual({"FIRST", "SECOND", "THIRD"}, identifiers)
+        self.assertEqual("https://api.example/search", session.get_calls[0][0])
+        self.assertEqual(
+            {"structure": "WithStructure", "types": "Dataset", "page": 1, "pageSize": 2},
+            session.get_calls[0][1]["params"],
+        )
+        self.assertEqual(2, session.get_calls[1][1]["params"]["page"])
     def test_existing_datasets_reads_dct_identifier_without_uri_prefix_filter(self):
         api = LindasDatasetsAPI(make_config(), Session())
         queries = []
@@ -108,6 +130,19 @@ class ApiTests(unittest.TestCase):
         self.assertEqual({"DATASET_1", "DATASET_2"}, api.get_existing_dataset_identifiers())
         self.assertIn("dct:identifier ?identifier", queries[0])
         self.assertNotIn("STRSTARTS", queries[0])
+
+    def test_existing_structures_use_the_dataset_to_structure_link(self):
+        api = LindasDatasetsAPI(make_config(), Session())
+        queries = []
+
+        def query(sparql):
+            queries.append(sparql)
+            return [{"identifier": {"value": "DATASET_1"}}]
+
+        api.query = query
+        self.assertEqual({"DATASET_1"}, api.get_existing_structured_dataset_identifiers())
+        self.assertIn("dct:conformsTo ?structure", queries[0])
+        self.assertIn('CONCAT(STR(?dataset), "/structure")', queries[0])
     def test_dataset_structure_returns_turtle_and_treats_404_as_absence(self):
         class StructureSession(Session):
             def get(self, url, **kwargs):

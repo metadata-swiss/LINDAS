@@ -31,20 +31,28 @@ def make_config() -> DatasetConfig:
 
 
 class FakeI14Y:
-    def __init__(self, datasets):
+    def __init__(self, datasets, structured_identifiers=()):
         self.datasets = datasets
+        self.structured_identifiers = set(structured_identifiers)
 
     def get_all_datasets(self):
         return self.datasets
 
+    def get_structured_dataset_identifiers(self):
+        return self.structured_identifiers
+
 
 class FakeLindas:
-    def __init__(self, existing):
+    def __init__(self, existing, structured_identifiers=()):
         self.existing = set(existing)
+        self.structured_identifiers = set(structured_identifiers)
         self.deleted = []
 
     def get_existing_dataset_identifiers(self):
         return self.existing
+
+    def get_existing_structured_dataset_identifiers(self):
+        return self.structured_identifiers
 
     def delete_dataset(self, identifier):
         self.deleted.append(identifier)
@@ -79,15 +87,32 @@ class DatasetSynchronizerTests(unittest.TestCase):
         ]
         with TemporaryDirectory() as directory:
             path = Path(directory) / "dataset_source_manifest.json"
-            DatasetSourceManifest(datasets, 1).write(path)
+            DatasetSourceManifest(datasets, ["FIRST"]).write(path)
             restored = DatasetSourceManifest.read(path)
 
         self.assertEqual(["FIRST", "SECOND"], restored.source_identifiers)
+        self.assertEqual(["FIRST"], restored.structured_dataset_identifiers)
         self.assertEqual(1, restored.structured_dataset_count)
         restored.validate_batch_ids(["1", "2"])
         with self.assertRaisesRegex(ValueError, "absent from the frozen source manifest"):
             restored.validate_batch_ids(["missing"])
 
+    def test_reimports_only_datasets_whose_structure_presence_differs(self):
+        datasets = [
+            dataset("A", "1", "2025-01-01T00:00:00+00:00"),
+            dataset("B", "2", "2025-01-01T00:00:00+00:00"),
+        ]
+        lindas = FakeLindas({"A", "B"}, structured_identifiers={"B"})
+        synchronizer = DatasetSynchronizer(make_config(), FakeI14Y(datasets), lindas)
+
+        plan = synchronizer.build_plan(
+            datasets,
+            now=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
+            structured_dataset_identifiers={"A"},
+        )
+
+        self.assertEqual(["1", "2"], plan.process_ids)
+        self.assertEqual(["A", "B"], plan.delete_identifiers)
     def test_parse_modified_at_accepts_high_precision_and_rejects_invalid_values(self):
         parsed = DatasetSynchronizer.parse_modified_at(
             {"system": {"modifiedAt": "2026-01-01T12:00:00.123456789Z"}}

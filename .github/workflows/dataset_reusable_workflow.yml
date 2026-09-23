@@ -78,17 +78,28 @@ jobs:
           config = DatasetConfig.from_env()
           i14y = I14YDatasetsAPI(config)
           with ThreadPoolExecutor(max_workers=2) as executor:
-              structure_count_future = executor.submit(I14YDatasetsAPI(config).get_structured_dataset_count)
-              source_datasets = i14y.get_all_datasets()
-              source_structure_count = structure_count_future.result()
-          plan = DatasetSynchronizer(config, i14y, LindasDatasetsAPI(config)).build_plan(source_datasets)
-          if source_structure_count > len(plan.source_identifiers):
-              raise RuntimeError(
-                  "i14y reported more datasets with structures than total source datasets: "
-                  f"{source_structure_count} > {len(plan.source_identifiers)}"
+              structured_identifiers_future = executor.submit(
+                  I14YDatasetsAPI(config).get_structured_dataset_identifiers
               )
+              source_datasets = i14y.get_all_datasets()
+              structured_identifiers = structured_identifiers_future.result()
+          source_identifiers = set(DatasetSynchronizer._source_by_identifier(source_datasets))
+          unknown_structured_identifiers = structured_identifiers - source_identifiers
+          if unknown_structured_identifiers:
+              raise RuntimeError(
+                  "i14y reported structured dataset identifier(s) absent from /api/datasets: "
+                  + ", ".join(sorted(unknown_structured_identifiers))
+              )
+          plan = DatasetSynchronizer(config, i14y, LindasDatasetsAPI(config)).build_plan(
+              source_datasets,
+              structured_dataset_identifiers=structured_identifiers,
+          )
+          source_structure_count = len(structured_identifiers)
           plan.write("dataset_sync_plan.json")
-          DatasetSourceManifest(source_datasets, source_structure_count).write("dataset_source_manifest.json")
+          DatasetSourceManifest(
+              source_datasets,
+              sorted(structured_identifiers),
+          ).write("dataset_source_manifest.json")
           batch_size = int(os.environ["DATASET_BATCH_SIZE"])
           batches = [plan.process_ids[index:index + batch_size] for index in range(0, len(plan.process_ids), batch_size)]
           matrix = {"include": [
