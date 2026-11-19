@@ -1,0 +1,84 @@
+PREFIX ch: <https://schema.ld.admin.ch/>
+@prefix schema: <http://schema.org/> .
+@prefix vl: <https://version.link/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+[
+  sh:targetNode <https://ld.admin.ch/municipality/version/16614> ;
+  sh:message "Latest version must be linked to identity" ;
+  sh:property
+    [
+      sh:path [ sh:inversePath vl:version ] ;
+      sh:hasValue <https://ld.admin.ch/municipality/2275> ;
+      sh:node
+        [
+          sh:property
+            [
+              sh:path rdf:type ;
+              sh:hasValue vl:Identity, ch:Municipality ;
+            ],
+            [
+              sh:path schema:name ;
+              sh:hasValue "Murten" ;
+            ] ;
+        ] ;
+    ] ;
+] .
+
+[
+  sh:targetNode <https://ld.admin.ch/district/version/10282> ;
+  sh:message "Latest version must be linked to identity" ;
+  sh:property
+    [
+      sh:path [ sh:inversePath vl:version ] ;
+      sh:hasValue <https://ld.admin.ch/district/2230> ;
+      sh:node
+        [
+          sh:property
+            [
+              sh:path rdf:type ;
+              sh:hasValue vl:Identity, ch:District ;
+            ],
+            [
+              sh:path schema:name ;
+              sh:hasValue "Riviera-Pays-d'Enhaut" ;
+            ] ;
+        ] ;
+    ] ;
+] .
+
+[
+  sh:targetNode <https://ld.admin.ch/municipality/371> ;
+  sh:property
+    [
+      sh:path schema:identifier ;
+      sh:hasValue 371 ;
+      sh:maxCount 1 ;
+    ],
+    [
+      sh:path schema:inDefinedTermSet ;
+      sh:hasValue <https://ld.admin.ch/dimension/municipality> ;
+      sh:maxCount 1 ;
+    ];
+] .
+
+[
+  sh:targetNode <https://ld.admin.ch/municipality/version/10683> ;
+  sh:property
+    [
+      sh:message "Version must link to its successor" ;
+      sh:path vl:successor ;
+      sh:hasValue <https://ld.admin.ch/municipality/version/13426> ;
+    ] ;
+] .
+
+[
+  sh:targetNode <https://ld.admin.ch/municipality/version/13426> ;
+  sh:property
+    [
+      sh:message "Version must link to its predecessor" ;
+      sh:path vl:predecessor ;
+      sh:hasValue <https://ld.admin.ch/municipality/version/10683> ;
+    ] ;
+] .

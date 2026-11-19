@@ -1,0 +1,105 @@
+PREFIX ch: <https://schema.ld.admin.ch/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX vl: <https://version.link/>
+PREFIX sh: <http://www.w3.org/ns/shacl#>
+base <https://version.link/_/>
+
+<IdentityShape>
+  a sh:NodeShape ;
+  sh:targetClass vl:Identity ;
+  sh:property
+    [
+      sh:path vl:version ;
+      sh:maxCount 1 ;
+      sh:class vl:Version ;
+    ] ;
+.
+
+<VersionShape>
+  a sh:NodeShape ;
+  sh:targetClass vl:Version ;
+  sh:property
+    [
+      sh:path vl:identity ;
+      sh:minCount 1 ;
+      sh:maxCount 1 ;
+    ],
+    [
+      sh:path [ sh:alternativePath ( vl:startEvent vl:endEvent ) ] ;
+      sh:class vl:ChangeEvent ;
+      sh:message "Start and end events must have the class vl:ChangeEvent" ;
+    ],
+    [
+      sh:path vl:startEvent ;
+      sh:minCount 1 ;
+      sh:message "A version must have a start event" ;
+    ],
+    [
+      sh:path vl:endEvent ;
+      sh:maxCount 1 ;
+      sh:message "A version can have at most one end event" ;
+    ]
+.
+
+<ChangeEventShape>
+  a sh:NodeShape ;
+  sh:targetClass vl:ChangeEvent ;
+  sh:xone ( <InitialRecordingShape> <RegularEventShape> <DissolutionShape> ) ;
+.
+
+<InitialRecordingShape>
+  sh:property
+    [
+      sh:path vl:predecessor ;
+      sh:maxCount 0 ;
+      sh:message "Initial recording cannot have a predecessor" ;
+    ],
+    [
+      sh:path vl:successor ;
+      sh:minCount 1 ;
+      sh:message "Initial recording must have a successor" ;
+    ],
+    [
+      sh:path rdf:type ;
+      sh:hasValue vl:InitialRecording ;
+    ] ;
+.
+
+<RegularEventShape>
+  sh:property
+    [
+      sh:path vl:predecessor ;
+      sh:minCount 1 ;
+      sh:message "Change event must have a predecessor" ;
+    ],
+    [
+      sh:path
+        (
+          vl:successor
+          vl:predecessor
+        ) ;
+      sh:equals vl:predecessor ;
+      sh:message "Event's predecessor must equal successor's predecessor" ;
+    ],
+    [
+      sh:path
+        (
+          vl:predecessor
+          vl:successor
+        ) ;
+      sh:equals vl:successor ;
+      sh:message "Event's successor must equal predecessor's successor" ;
+    ] ;
+.
+
+<DissolutionShape>
+  sh:property
+    [
+      sh:path vl:successor ;
+      sh:maxCount 0 ;
+    ] ,
+    [
+      sh:path vl:predecessor ;
+      sh:minCount 1 ;
+    ] ;
+.

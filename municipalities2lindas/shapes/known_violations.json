@@ -1,0 +1,3 @@
+[{"shape_file": "VersionLink.ttl", "focus_node": "https://ld.admin.ch/district/111",
+  "path": "https://version.link/version", "component": "MaxCountConstraintComponent",
+  "reason": "legacy-parity B2: current and mode-29 deprecated versions (10229, 10119)"}]

@@ -1,0 +1,34 @@
+name: "[MUNICIPALITIES GRAPHDB PROD] Dry-run diff"
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # gate decides; see MUNICIPALITIES_SCHEDULE_PROD
+  workflow_dispatch:
+    inputs:
+      DRY_RUN:
+        description: "Build and diff only"
+        required: false
+        type: boolean
+        default: false
+      ALLOW_LARGE_CHANGE:
+        description: "Bypass the removed-triples safety check"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: municipalities-prod
+  cancel-in-progress: false
+
+jobs:
+  update-municipalities:
+    uses: ./.github/workflows/municipalities_reusable_workflow.yml
+    with:
+      RUNNER: ubuntu-26.04
+      ENVIRONMENT: PROD
+      LINDAS_UPDATE_URL: "https://graphdb.lindas.admin.ch/repositories/lindas/statements"
+      LINDAS_QUERY_URL: "https://lindas.admin.ch/query"
+      SCHEDULE: ${{ vars.MUNICIPALITIES_SCHEDULE_PROD }}
+      PUBLISH_ENABLED: false
+      DRY_RUN: ${{ inputs.DRY_RUN || false }}
+      ALLOW_LARGE_CHANGE: ${{ inputs.ALLOW_LARGE_CHANGE || false }}
