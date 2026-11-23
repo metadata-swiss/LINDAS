@@ -210,9 +210,13 @@ concept2sharedDimension/src/local/test graph connection.py
 
 *.ttl
 *.nt
+!municipalities2lindas/tests/fixtures/*.nt
+!municipalities2lindas/shapes/*.ttl
 concept2sharedDimension/src/local_tests*
 concept2sharedDimension/src/debug*
 graph*.html
 
 batches/
 data/
+# Superpowers working docs (specs/plans); durable notes go in docs/agent/
+docs/superpowers/

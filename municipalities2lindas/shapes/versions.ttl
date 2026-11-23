@@ -1,0 +1,33 @@
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX schema: <http://schema.org/>
+PREFIX vl: <https://version.link/>
+PREFIX sh: <http://www.w3.org/ns/shacl#>
+
+[
+  sh:targetNode <https://ld.admin.ch/district/changeevent/157> ;
+  sh:closed true ;
+  sh:ignoredProperties ( rdf:type ) ;
+  sh:property
+    [
+      sh:path vl:successor ;
+      sh:hasValue <https://ld.admin.ch/district/version/10321> ;
+      sh:maxCount 1 ;
+    ],
+    [
+      sh:path schema:validFrom ;
+    ],
+    [
+      sh:path vl:inVersionedIdentitySet ;
+      sh:hasValue <https://ld.admin.ch/fso/register> ;
+    ],
+    [
+      sh:path vl:predecessor ;
+      sh:hasValue
+        <https://ld.admin.ch/district/version/10186>,
+        <https://ld.admin.ch/district/version/10191>,
+        <https://ld.admin.ch/district/version/10181>,
+        <https://ld.admin.ch/district/version/10183>,
+        <https://ld.admin.ch/district/version/10176>,
+        <https://ld.admin.ch/district/version/10185>
+    ] ;
+] .

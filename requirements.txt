@@ -3,3 +3,4 @@ beautifulsoup4
 requests
 urllib3
 python-dateutil
+pyshacl==0.40.2

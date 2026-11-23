@@ -1,0 +1,171 @@
+name: Municipalities2Lindas Update (reusable workflow)
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER:
+        required: false
+        type: string
+        default: ubuntu-26.04
+      ENVIRONMENT:
+        required: true
+        type: string
+      LINDAS_UPDATE_URL:
+        required: true
+        type: string
+      LINDAS_QUERY_URL:
+        required: true
+        type: string
+      SCHEDULE:
+        required: false
+        type: string
+        default: ""
+      PUBLISH_ENABLED:
+        required: true
+        type: boolean
+      DRY_RUN:
+        required: true
+        type: boolean
+      ALLOW_LARGE_CHANGE:
+        required: true
+        type: boolean
+    secrets:
+      GRAPHDB_PASSWORD:
+        required: false
+      GRAPHDB_USER:
+        required: false
+
+env:
+  PYTHON_VERSION: "3.10"
+  TARGET_GRAPH: "https://lindas.admin.ch/fso/register"
+  LINDAS_UPDATE_URL: ${{ inputs.LINDAS_UPDATE_URL }}
+  LINDAS_QUERY_URL: ${{ inputs.LINDAS_QUERY_URL }}
+  ALLOW_LARGE_CHANGE: ${{ inputs.ALLOW_LARGE_CHANGE }}
+
+jobs:
+  schedule-gate:
+    timeout-minutes: 5
+    runs-on: ${{ inputs.RUNNER }}
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Decide whether to run today
+        id: gate
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ inputs.SCHEDULE }}
+        run: |
+          if [ "$EVENT_NAME" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            python -m municipalities2lindas.src.schedule --expression "$SCHEDULE"
+          fi
+
+  build:
+    needs: schedule-gate
+    if: ${{ needs.schedule-gate.outputs.run == 'true' }}
+    timeout-minutes: 30
+    runs-on: ${{ inputs.RUNNER }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: |
+          # The Ubuntu 26.04 preview image contains Microsoft APT sources which
+          # can temporarily reject updates. raptor2-utils is provided by Ubuntu.
+          sudo apt-get update \
+            -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" \
+            -o Dir::Etc::sourceparts="-"
+          sudo apt-get install -y \
+            -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" \
+            -o Dir::Etc::sourceparts="-" \
+            raptor2-utils
+          python -m pip install -r requirements.txt
+      - name: Build municipalities N-Triples
+        run: python -m municipalities2lindas.src.main build --download-dir . --output municipalities.nt
+      - name: Validate N-Triples
+        run: rapper -i ntriples -c municipalities.nt
+      - name: Archive build output
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: municipalities-${{ github.run_id }}
+          path: |
+            municipalities.nt
+            source_info.json
+            shacl_report.ttl
+            *.zip
+          if-no-files-found: warn
+
+  diff:
+    needs: build
+    timeout-minutes: 30
+    runs-on: ${{ inputs.RUNNER }}
+    outputs:
+      action: ${{ steps.diff.outputs.action }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Download build output
+        uses: actions/download-artifact@v4
+        with:
+          name: municipalities-${{ github.run_id }}
+      - name: Diff generated graph against LINDAS
+        id: diff
+        run: >
+          python -m municipalities2lindas.src.main diff
+          --input municipalities.nt
+          --source-info source_info.json
+          --report municipalities_diff.json
+      - name: Warn when the diff is not published
+        env:
+          ACTION: ${{ steps.diff.outputs.action }}
+          PUBLISH_ENABLED: ${{ inputs.PUBLISH_ENABLED }}
+          DRY_RUN: ${{ inputs.DRY_RUN }}
+        run: |
+          if [ "$ACTION" = "upload" ] && { [ "$PUBLISH_ENABLED" != "true" ] || [ "$DRY_RUN" = "true" ]; }; then
+            echo "::warning::Diff is non-empty (action=upload) but publishing is disabled; the graph drifts from the generated output"
+          fi
+      - name: Archive diff report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: municipalities-diff-${{ github.run_id }}
+          path: municipalities_diff.json
+
+  publish:
+    needs: diff
+    if: ${{ needs.diff.outputs.action == 'upload' && inputs.PUBLISH_ENABLED && !inputs.DRY_RUN && inputs.ENVIRONMENT != 'PROD' }}
+    timeout-minutes: 30
+    runs-on: ${{ inputs.RUNNER }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Download build output
+        uses: actions/download-artifact@v4
+        with:
+          name: municipalities-${{ github.run_id }}
+      - name: Replace the LINDAS graph and verify the count
+        env:
+          GRAPHDB_USER: ${{ secrets.GRAPHDB_USER }}
+          GRAPHDB_PASSWORD: ${{ secrets.GRAPHDB_PASSWORD }}
+        run: |
+          python -m municipalities2lindas.src.lindas municipalities.nt | tee published.txt
+          grep '^PUBLISHED_TRIPLES=' published.txt >> "$GITHUB_ENV"
+      - name: Summarize publication
+        run: echo "Published $PUBLISHED_TRIPLES triples to $TARGET_GRAPH" >> "$GITHUB_STEP_SUMMARY"

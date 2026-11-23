@@ -1,0 +1,11 @@
+PREFIX sh: <http://www.w3.org/ns/shacl#>
+PREFIX schema: <http://schema.org/>
+
+[
+  a sh:NodeShape ;
+  sh:targetClass <https://schema.ld.admin.ch/Municipality> ;
+  sh:property [
+    sh:path schema:name ;
+    sh:maxCount 1 ;
+  ] ;
+] .

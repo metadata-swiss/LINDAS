@@ -1,0 +1,80 @@
+prefix admin: <https://schema.ld.admin.ch/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX schema: <http://schema.org/>
+PREFIX vl: <https://version.link/>
+PREFIX ch: <https://schema.ld.admin.ch/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX sh: <http://www.w3.org/ns/shacl#>
+
+<https://version.link/_/IdentityShape>
+  sh:xone ( <CantonShape> <MunicipalityShape> <DistrictShape> ) ;
+  sh:property
+    [
+      sh:path schema:identifier ;
+      sh:minCount 1 ;
+      sh:maxCount 1 ;
+      sh:datatype xsd:integer ;
+    ]
+.
+
+<CantonShape>
+  sh:property
+    [
+      sh:path rdf:type ;
+      sh:hasValue ch:Canton ;
+    ],
+    [
+      sh:path schema:inDefinedTermSet ;
+      sh:hasValue <https://ld.admin.ch/dimension/canton> ;
+    ] ;
+.
+
+<MunicipalityShape>
+  sh:property
+    [
+      sh:path rdf:type ;
+      sh:hasValue ch:Municipality ;
+    ],
+    [
+      sh:path vl:inVersionedIdentitySet ;
+      sh:hasValue <https://ld.admin.ch/fso/register> ;
+    ],
+    [
+      sh:path schema:inDefinedTermSet ;
+      sh:hasValue <https://ld.admin.ch/dimension/municipality> ;
+    ] ;
+.
+
+<DistrictShape>
+  sh:property
+    [
+      sh:path rdf:type ;
+      sh:hasValue ch:District ;
+    ],
+    [
+      sh:path vl:inVersionedIdentitySet ;
+      sh:hasValue <https://ld.admin.ch/fso/register> ;
+    ],
+    [
+      sh:path schema:inDefinedTermSet ;
+      sh:hasValue <https://ld.admin.ch/dimension/district> ;
+    ] ;
+.
+
+<InitialRecordingShape>
+  sh:property
+    [
+      sh:path schema:startDate ;
+      sh:hasValue "1960-01-01"^^xsd:date ;
+    ] ;
+.
+
+<MunicipalityChangeEventShape>
+  a sh:NodeShape ;
+  sh:targetClass admin:MunicipalityChangeEvent ;
+  sh:property
+    [
+      sh:path vl:inVersionedIdentitySet ;
+      sh:hasValue <https://ld.admin.ch/fso/register> ;
+    ] ;
+.
